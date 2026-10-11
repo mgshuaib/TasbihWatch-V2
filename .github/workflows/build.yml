@@ -1,17 +1,57 @@
-name: Build سبحة → TestFlight
+name: 🚀 رفع إلى TestFlight (يحتاج حساب مطوّر وأسرار)
 
-# يعمل عند كل دفعة إلى الفرع main، أو يدويًا من زر Run workflow
+# ⚠️ درس من تجربة حقيقية: كان هذا السير يعمل **تلقائيًا مع كل دفعة** فيفشل
+#    بخطأ أحمر مزعج قبل وجود حساب المطوّر:
+#      xcodebuild: error: The flag -authenticationKeyID is required when specifying -authenticationKeyPath.
+#    السبب: الأسرار (APPLE_TEAM_ID · ASC_KEY_ID …) غير موجودة — وهذا **متوقّع** قبل
+#    الاشتراك. لذلك صار هذا السير **يدويًا فقط**، ويحرسه فحص أسرار أوّلًا:
+#      • لا أسرار ⇒ المهمة تُتخطّى بهدوء (رمادي) مع رسالة شرح، ولا خطأ أحمر.
+#      • وُجدت الأسرار ⇒ يكمل الأرشفة والرفع إلى TestFlight.
 on:
-  push:
-    branches: [ main ]
-  workflow_dispatch:
+  workflow_dispatch:        # يدوي فقط: Run workflow
 
 concurrency:
   group: tasbih-build
   cancel-in-progress: true
 
 jobs:
+
+  # ─────────────────────────────────────────────
+  # ⓪ الحارس: هل توجد الأسرار الأربعة الأساسية؟
+  #    (لا يمكن فحص الأسرار في شرط على مستوى المهمة، فنفحصها في مهمة صغيرة)
+  # ─────────────────────────────────────────────
+  prereqs:
+    name: 🔑 فحص الأسرار المطلوبة
+    runs-on: ubuntu-latest
+    outputs:
+      ready: ${{ steps.check.outputs.ready }}
+    steps:
+      - name: هل توجد أسرار النشر؟
+        id: check
+        run: |
+          if [ -n "${{ secrets.APPLE_TEAM_ID }}" ] && [ -n "${{ secrets.ASC_KEY_ID }}" ] \
+             && [ -n "${{ secrets.ASC_ISSUER_ID }}" ] && [ -n "${{ secrets.ASC_KEY_CONTENT }}" ]; then
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+            echo "## ✅ الأسرار موجودة — سيبدأ بناء النشر" >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+            {
+              echo "## ⏸️ لم يبدأ النشر — لا توجد أسرار بعد"
+              echo ""
+              echo "هذا السير **يرفع النسخة إلى TestFlight** ويحتاج حساب مطوّر أبل (٩٩\$) + ٤ أسرار:"
+              echo "\`APPLE_TEAM_ID\` · \`ASC_KEY_ID\` · \`ASC_ISSUER_ID\` · \`ASC_KEY_CONTENT\`"
+              echo ""
+              echo "**لا تفعل شيئًا الآن.** للتأكد من سلامة الشيفرة استخدم:"
+              echo "**«✅ فحص الترجمة (بلا أسرار)»** — فهو لا يحتاج أي أسرار."
+            } >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+  # ─────────────────────────────────────────────
+  # ① البناء والرفع (يعمل فقط عند وجود الأسرار)
+  # ─────────────────────────────────────────────
   build:
+    needs: prereqs
+    if: needs.prereqs.outputs.ready == 'true'
     # سيرفر macOS مجاني على المستودعات العامة
     runs-on: macos-15
     timeout-minutes: 45
